@@ -3,6 +3,6 @@ pathlib
 nibabel
 numpy
 scipy
-cv2
+opencv-python
 skimage
 mclahe

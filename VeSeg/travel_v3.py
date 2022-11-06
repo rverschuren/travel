@@ -10,13 +10,15 @@ import nibabel as nib
 import cv2
 from skimage import measure, filters, morphology, exposure, restoration
 import numpy as np
-from scipy.ndimage.morphology import binary_closing, binary_fill_holes, binary_erosion, binary_dilation
+from scipy.ndimage import binary_closing, binary_fill_holes, binary_erosion, binary_dilation
 from scipy.ndimage import label
 import scipy.ndimage as ndi
 from scipy.signal import fftconvolve
 from skimage.morphology import skeletonize_3d
 from skimage.feature import structure_tensor, structure_tensor_eigenvalues
 
+
+from VeSeg.dicom_helper import load_dicom, to_hu, affine3d, gifshow
 
 import mclahe
 
@@ -735,9 +737,14 @@ def travel(pth_in, pth_out, pfx='', pth_ext_msk = ''):
     '''
     
     #load nii-data
-    img_nii = nib.load(pth_in)
-    img = np.array(np.squeeze(img_nii.get_fdata()), dtype = np.float32)
-    affine = img_nii.affine
+    img_nii = nib.load("../media/ex.nii")
+    slices_dcm = load_dicom(pth_in)
+    img = to_hu(slices_dcm)
+    print(img.shape)
+    ## img = np.array(np.squeeze(img_nii.get_fdata()), dtype = np.float32)
+    print(f"img size : {img.shape}")
+    #OLD affine = img_nii.affine
+    affine = affine3d(slices_dcm)
     
     #rescale image pixel values to be in the range [0,1]
     img_scl = img.astype(np.float32)
@@ -750,8 +757,10 @@ def travel(pth_in, pth_out, pfx='', pth_ext_msk = ''):
     case_voxels, avg_otsu = preprocessing(img_scl)
     # compute segmentation
     luvox_msk = np.array(segment_lung(case_voxels, avg_otsu) > 0, dtype=bool)
-        
+    print(f"luvox_msk size: {luvox_msk.shape}")
+
     if len(pth_ext_msk)>0:
+        print("INFO: no lung mask contained in input.")
         msk_ext_lun_nii = nib.load(pth_ext_msk)
         msk_ext_lun = np.array(np.squeeze(msk_ext_lun_nii.get_fdata()), dtype = np.bool)
         msk_ext_lun = msk_ext_lun != 0 #because lung mask could have a strange format
@@ -782,12 +791,13 @@ def travel(pth_in, pth_out, pfx='', pth_ext_msk = ''):
     com_res = np.ones(3)*0.7
     resize_factor = res / com_res
     
-    
     print('2. interpolate image data')
     tme_1 = time.time()
     img_int = ArrRes(img_crp,resize_factor,order=3)
     tme_2 = time.time()
     print('execution time: ' + str(round(tme_2-tme_1))+' s')
+
+    #gifshow(img_int, "tmp/img_int.gif")
     
     
     crp_int = np.array([crp[0]*resize_factor[0],crp[2]*resize_factor[1], crp[4]*resize_factor[2]],dtype=int)
@@ -795,8 +805,11 @@ def travel(pth_in, pth_out, pfx='', pth_ext_msk = ''):
     img_int_2 = ArrRes(img,resize_factor,order=0)
     img_int_2[crp_int_2[0]:crp_int_2[1],crp_int_2[2]:crp_int_2[3], crp_int_2[4]:crp_int_2[5]]=img_int
     
+    #gifshow(img_int_2, "tmp/img_int_2.gif")
 
+    print(f"affine : \n{affine}")
     affine_int = rescale_affine(affine, img.shape,zooms=com_res,new_shape=img_int_2.shape)
+    print(f"affine res : \n{affine_int}")
     #nii_img = nib.Nifti1Image(np.array(img_int_2, dtype=np.int16), affine_int)
     #nib.save(nii_img, pth_out+pfx+'raw_int.nii.gz')
     
@@ -888,6 +901,7 @@ def travel_nora(pth_im, pth_msk_lun, pth_msk_tra, pth_msk_ves):
     
     #load nii-data
     img_nii = nib.load(pth_im)
+    # TODO:
     img = np.array(np.squeeze(img_nii.get_fdata()), dtype = np.float32)
     img[img<-1024]=-1024
     affine = img_nii.affine
